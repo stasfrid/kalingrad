@@ -1,0 +1,380 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Audio;
+using Microsoft.Xna.Framework.Content;
+using Microsoft.Xna.Framework.GamerServices;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
+using Microsoft.Xna.Framework.Media;
+
+namespace Kalingrad
+{
+    /// <summary>
+    /// This is the main type for your game
+    /// </summary>
+    public class Game1 : Microsoft.Xna.Framework.Game
+    {
+        GraphicsDeviceManager graphics;
+        SpriteBatch spriteBatch;
+
+        // a black texture (used to draw circles,lines ,etc ...)
+        private Texture2D pixel;
+
+        private List<Vector2> lines;
+
+
+        public const int HEIGHT = 600;
+        public const int WIDTH  = 800;
+
+        // right shape
+        private List<RightShape> rightShapes;
+
+        private RightShape currentRightShape;
+        private int currentRightShapeIdx;
+        // left shape
+        private LeftShape leftShape;
+
+        // Mouse states
+        MouseState currentMouseState, previousMouseState;
+        KeyboardState currentKeyboardState, previousKeyboardState;
+
+        private int currentSelectedPoint;
+
+        private bool gotShape;
+        private float watingTime;
+
+        private static Color dotSmallColor  = Color.Black;
+        private static Color dotBigColor    = Color.Black;
+        private static Color lineColor      = Color.Black;
+        private static Color textColor      = Color.Black;
+        private static Color bgColor        = Color.White;
+
+        private SpriteFont textFont;
+
+        public Game1()
+        {
+            graphics = new GraphicsDeviceManager(this);
+            Content.RootDirectory = "Content";
+
+
+            this.lines = new List<Vector2>();
+            this.gotShape = false;
+        }
+
+        /// <summary>
+        /// Allows the game to perform any initialization it needs to before starting to run.
+        /// This is where it can query for any required services and load any non-graphic
+        /// related content.  Calling base.Initialize will enumerate through any components
+        /// and initialize them as well.
+        /// </summary>
+        protected override void Initialize()
+        {
+            // TODO: Add your initialization logic here
+            graphics.PreferredBackBufferHeight = HEIGHT;
+            graphics.PreferredBackBufferWidth = WIDTH;
+
+            this.IsMouseVisible = true;
+
+            // creating an empty pixel
+            this.pixel = new Texture2D(graphics.GraphicsDevice, 1, 1);
+            pixel.SetData(new[] { Color.White });
+
+            // get mouse state
+            currentMouseState = Mouse.GetState();
+            currentKeyboardState = Keyboard.GetState();
+
+
+            // create right shapes
+
+            this.rightShapes = new List<RightShape>();
+
+            rightShapes.Add(UserShapes.createHouseShape());
+            rightShapes.Add(UserShapes.createDiamond());
+            rightShapes.Add(UserShapes.createPent());
+            rightShapes.Add(RandomShapeGenerator.GenerateShape(6));
+           
+
+            currentRightShapeIdx = 0;
+
+            currentRightShape = rightShapes[currentRightShapeIdx];
+            leftShape = new LeftShape(currentRightShape);
+            
+         
+
+            this.watingTime = 0;
+
+            base.Initialize();
+        }
+
+        
+        /// <summary>
+        /// LoadContent will be called once per game and is the place to load
+        /// all of your content.
+        /// </summary>
+        protected override void LoadContent()
+        {
+            // Create a new SpriteBatch, which can be used to draw textures.
+            spriteBatch = new SpriteBatch(GraphicsDevice);
+
+
+            textFont = this.Content.Load<SpriteFont>(@"Fonts/arial");
+            // TODO: use this.Content to load your game content here
+        }
+
+        /// <summary>
+        /// UnloadContent will be called once per game and is the place to unload
+        /// all content.
+        /// </summary>
+        protected override void UnloadContent()
+        {
+            // TODO: Unload any non ContentManager content here
+        }
+
+        /// <summary>
+        /// Allows the game to run logic such as updating the world,
+        /// checking for collisions, gathering input, and playing audio.
+        /// </summary>
+        /// <param name="gameTime">Provides a snapshot of timing values.</param>
+        protected override void Update(GameTime gameTime)
+        {
+            // Allows the game to exit
+            if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed)
+                this.Exit();
+
+            // TODO: Add your update logic here
+            previousMouseState = currentMouseState;
+            currentMouseState = Mouse.GetState();
+
+            previousKeyboardState = currentKeyboardState;
+            currentKeyboardState = Keyboard.GetState();
+
+
+            currentSelectedPoint = -1;
+
+            for (int i = 0; i < leftShape.points.Count; i++)
+            {
+                Rectangle checkRectangle = new Rectangle((int)leftShape.points[i].X - 3,
+    (int)leftShape.points[i].Y - 3, 5, 5);
+
+                if (Rectangle.Intersect(checkRectangle,
+                    new Rectangle(currentMouseState.X - 3, currentMouseState.Y - 3, 5, 5)) != Rectangle.Empty)
+                {
+                    currentSelectedPoint = i;
+                }
+           
+            }
+
+            if (currentMouseState.LeftButton == ButtonState.Pressed && previousMouseState.LeftButton == ButtonState.Released && currentSelectedPoint != -1)
+            {
+
+                if (!gotShape) leftShape.AddClick(currentSelectedPoint);
+                else nextShape();
+            }
+
+            if (currentKeyboardState.IsKeyDown(Keys.Escape) && previousKeyboardState.IsKeyUp(Keys.Escape))
+            {
+                this.Exit();
+            }
+
+            if (currentKeyboardState.IsKeyDown(Keys.N) && previousKeyboardState.IsKeyUp(Keys.N))
+            {
+                nextShape();
+            }
+
+            if (currentMouseState.RightButton == ButtonState.Pressed && previousMouseState.RightButton == ButtonState.Released)
+            {
+                
+                clearLeftShape();
+            }
+
+
+
+            // check for win
+            if (leftShape.HasWon() && !gotShape)
+            {
+                gotShape = true;
+                watingTime = 1;
+            }
+
+            if (gotShape) this.watingTime -= (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+            if (watingTime < 0)
+            {
+                nextShape();
+            }
+
+            base.Update(gameTime);
+        }
+
+        private void clearLeftShape()
+        {
+            leftShape.myEdges.Clear();
+            leftShape.lastSelectedPoint = -1;
+            gotShape = false;
+
+        }
+
+        private void nextShape()
+        {
+            clearLeftShape();
+            watingTime = 0;
+            currentRightShapeIdx++;
+
+            if (currentRightShapeIdx < rightShapes.Count) currentRightShape = rightShapes[currentRightShapeIdx];
+            else currentRightShape = RandomShapeGenerator.GenerateShape(6);
+            leftShape = new LeftShape(currentRightShape);
+        }
+
+        private void HandleMouseClick(Vector2 vector2)
+        {
+            this.lines.Add(vector2);
+        }
+
+        /// <summary>
+        /// This is called when the game should draw itself.
+        /// </summary>
+        /// <param name="gameTime">Provides a snapshot of timing values.</param>
+        protected override void Draw(GameTime gameTime)
+        {
+            GraphicsDevice.Clear(Game1.bgColor);
+
+            // TODO: Add your drawing code here
+
+            // Draw the split screen
+
+            spriteBatch.Begin();
+            spriteBatch.Draw(pixel, new Rectangle((WIDTH/2)-5,0,10,HEIGHT), Game1.lineColor);
+
+
+            // Draw instructions
+            spriteBatch.DrawString(textFont, 
+                "Try To Redraw the shape on the right \nusing only one pen stroke\nLeft mouse click to start drawing\nRight mouse click to clear drawing", 
+                new Vector2((WIDTH/2)+20,HEIGHT-220), 
+                Game1.textColor);
+
+            DrawRightShape();
+
+            DrawLines();
+
+            if (gotShape) drawWinString();
+
+            spriteBatch.End();
+
+            base.Draw(gameTime);
+        }
+
+        private void drawWinString()
+        {
+            spriteBatch.DrawString(textFont,
+                "You did it!",
+                new Vector2((WIDTH / 2) - 360, HEIGHT - 180),
+                Game1.textColor);
+        }
+
+        private void DrawLines()
+        {
+            for (int i = 0; i < this.lines.Count - 1;i++ )
+            {
+                DrawLineSegment(spriteBatch, lines[i], lines[i + 1], Game1.lineColor, 2);
+            }
+
+            // draw lines
+            for (int i = 0; i < leftShape.myEdges.Count; i++)
+            {
+                DrawLineSegment(spriteBatch,
+                    leftShape.points[leftShape.myEdges[i].X],
+                    leftShape.points[leftShape.myEdges[i].Y],
+                    Game1.lineColor, 2);
+            }
+
+            if (leftShape.lastSelectedPoint != -1 && !gotShape && currentMouseState.X <= (WIDTH/2))
+            {
+                DrawLineSegment(spriteBatch, leftShape.points[leftShape.lastSelectedPoint], new Vector2(currentMouseState.X, currentMouseState.Y), Game1.lineColor, 2);
+
+            }
+        }
+
+        private void DrawRightShape()
+        {
+           
+            // draw circles
+            for (int i = 0; i < currentRightShape.points.Count; i++)
+            {
+                DrawCircle(spriteBatch, currentRightShape.points[i], 5, Game1.dotSmallColor, 5);
+            }
+
+            // draw lines
+            for (int i = 0; i < currentRightShape.edges.Count; i++)
+            {
+                DrawLineSegment(spriteBatch,
+                    currentRightShape.points[currentRightShape.edges[i].X],
+                    currentRightShape.points[currentRightShape.edges[i].Y],
+                    Game1.lineColor, 2);
+            }
+
+
+        
+
+            for (int i = 0; i < leftShape.points.Count; i++)
+            {
+                if (i != currentSelectedPoint) DrawCircle(spriteBatch, leftShape.points[i], 5, Game1.dotSmallColor, 5);
+                else DrawCircle(spriteBatch, leftShape.points[i], 10, Game1.dotBigColor, 10);
+            }
+
+
+        }
+
+
+        private void DrawLineSegment(SpriteBatch spriteBatch, Vector2 point1, Vector2 point2, Color color, int lineWidth)
+        {
+            float angle = (float)Math.Atan2(point2.Y - point1.Y, point2.X - point1.X);
+            float length = Vector2.Distance(point1, point2);
+            spriteBatch.Draw(this.pixel, point1, null, color,
+            angle, Vector2.Zero, new Vector2(length, lineWidth),
+            SpriteEffects.None, 0f);
+        }
+
+        private void DrawPolygon(SpriteBatch spriteBatch, Vector2[] vertex, int count, Color color, int lineWidth)
+        {
+            if (count > 0)
+            {
+                for (int i = 0; i < count - 1; i++)
+                {
+                    DrawLineSegment(spriteBatch, vertex[i], vertex[i + 1], color, lineWidth);
+                }
+                DrawLineSegment(spriteBatch, vertex[count - 1], vertex[0], color, lineWidth);
+            }
+        }
+
+        private void DrawRectangle(SpriteBatch spriteBatch, Rectangle rectangle, Color color, int lineWidth)
+        {
+            Vector2[] vertex = new Vector2[4];
+            vertex[0] = new Vector2(rectangle.Left, rectangle.Top);
+            vertex[1] = new Vector2(rectangle.Right, rectangle.Top);
+            vertex[2] = new Vector2(rectangle.Right, rectangle.Bottom);
+            vertex[3] = new Vector2(rectangle.Left, rectangle.Bottom);
+
+            DrawPolygon(spriteBatch, vertex, 4, color, lineWidth);
+        }
+
+
+        private void DrawCircle(SpriteBatch spritbatch, Vector2 center, float radius, Color color, int lineWidth, int segments = 16)
+        {
+
+            Vector2[] vertex = new Vector2[segments];
+
+            double increment = Math.PI * 2.0 / segments;
+            double theta = 0.0;
+
+            for (int i = 0; i < segments; i++)
+            {
+                vertex[i] = center + radius * new Vector2((float)Math.Cos(theta), (float)Math.Sin(theta));
+                theta += increment;
+            }
+
+            DrawPolygon(spritbatch, vertex, segments, color, lineWidth);
+       }
+    }
+}
